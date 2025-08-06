@@ -10,6 +10,8 @@
       - key: OPENROUTER_API_KEY
         sync: false
       - key: WEBHOOK_URL
-        value: https://telegram-ai-bot-xxxx.onrender.com/webhook
+        value: https://telegram-ai-bot-xopipop.onrender.com/webhook
+      - key: PORT
+        value: 8080
     autoDeploy: true
     plan: free
