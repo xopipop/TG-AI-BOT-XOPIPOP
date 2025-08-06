@@ -24,7 +24,7 @@ async def webhook_handler(request):
         update_data = await request.json()
         # Создаем объект Update из данных
         from aiogram.types import Update
-        update = Update(**update_data)
+        update = Update.model_validate(update_data)
         # Правильный порядок аргументов: update, bot
         await dp.feed_update(update)
         return web.Response(status=200)
