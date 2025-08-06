@@ -44,6 +44,14 @@ async def on_shutdown(app):
         logger.info("✅ Webhook удален")
     except Exception as e:
         logger.error(f"❌ Ошибка удаления webhook: {e}")
+    
+    # Закрываем сессии aiohttp
+    logger.info("🛑 Закрытие сессий...")
+    try:
+        await bot.session.close()
+        logger.info("✅ Сессии закрыты")
+    except Exception as e:
+        logger.error(f"❌ Ошибка закрытия сессий: {e}")
 
 def main():
     logger.info(" Запуск Telegram AI Bot (Webhook)")
