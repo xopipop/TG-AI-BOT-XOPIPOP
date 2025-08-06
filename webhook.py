@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Webhook версия Telegram бота для Render
+Обновлено: 2025-08-06 - Исправлен API для aiogram 3.x
 """
 import os
 import logging
@@ -54,7 +55,7 @@ async def on_shutdown(app):
         logger.error(f"❌ Ошибка закрытия сессий: {e}")
 
 def main():
-    logger.info(" Запуск Telegram AI Bot (Webhook)")
+    logger.info("🚀 Запуск Telegram AI Bot (Webhook) - v2.0")
     app = web.Application()
     
     # Добавляем обработчики
