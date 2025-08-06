@@ -11,4 +11,3 @@
         sync: false
     autoDeploy: true
     plan: free
-    pythonVersion: "3.11"
