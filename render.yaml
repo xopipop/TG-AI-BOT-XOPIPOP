@@ -11,4 +11,5 @@ services:
         sync: false
     healthCheckPath: /
     autoDeploy: true
-    plan: free 
+    plan: free
+    pythonVersion: "3.11" 
