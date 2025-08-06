@@ -26,7 +26,7 @@ async def webhook_handler(request):
         from aiogram.types import Update
         update = Update.model_validate(update_data)
         # Правильный порядок аргументов: update, bot
-        await dp.feed_update(update)
+        await dp.feed_update(update, bot)
         return web.Response(status=200)
     except Exception as e:
         logger.error(f"Ошибка обработки webhook: {e}")
