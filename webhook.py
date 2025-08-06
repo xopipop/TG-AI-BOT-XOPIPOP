@@ -21,7 +21,10 @@ async def health_check(request):
 async def webhook_handler(request):
     """Обработчик webhook для aiogram 3.x"""
     try:
-        update = await request.json()
+        update_data = await request.json()
+        # Создаем объект Update из данных
+        from aiogram.types import Update
+        update = Update(**update_data)
         await dp.feed_update(bot, update)
         return web.Response(status=200)
     except Exception as e:
