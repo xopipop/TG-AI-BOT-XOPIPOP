@@ -54,4 +54,7 @@ Thumbs.db
 # API keys and tokens
 API.txt
 *.key
-*.token 
+*.token
+
+# Render deployment
+.render-buildlogs/ 
