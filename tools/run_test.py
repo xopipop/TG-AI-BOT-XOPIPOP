@@ -7,24 +7,25 @@
 import sys
 import os
 
+# Add project root to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 def test_bot_functionality():
     """Дополнительная проверка функциональности бота"""
     print("\n🤖 Тестирование функций бота:")
     
     try:
-        # Проверяем импорт основных функций
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("bot_module", "telegram_ai_bot.py")
-        bot_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(bot_module)
-        print("✅ Основной бот успешно загружен")
+        # Проверяем импорт основных модулей
+        import telegram_ai_bot
+        import tools.text_extractor
+        print("✅ Основные модули успешно загружены")
         
         # Проверяем наличие основных функций
-        if hasattr(bot_module, 'invoke_llm_api'):
+        if hasattr(telegram_ai_bot, 'invoke_llm_api'):
             print("✅ Функция API найдена")
-        if hasattr(bot_module, 'extract_text_from_image'):
+        if hasattr(tools.text_extractor, 'extract_text_from_image'):
             print("✅ Функция OCR найдена")
-        if hasattr(bot_module, 'extract_text_from_pdf'):
+        if hasattr(tools.text_extractor, 'extract_text_from_pdf'):
             print("✅ Функция PDF найдена")
             
         return True
@@ -51,7 +52,7 @@ def main():
     
     # Проверяем зависимости
     print("\n📦 Проверка зависимостей:")
-    deps = ['aiogram', 'aiohttp', 'aiofiles', 'PIL', 'pytesseract', 'PyPDF2', 'docx']
+    deps = ['aiogram', 'aiohttp', 'aiofiles', 'PIL', 'pytesseract', 'fitz', 'docx']
     missing = []
     
     for dep in deps:
