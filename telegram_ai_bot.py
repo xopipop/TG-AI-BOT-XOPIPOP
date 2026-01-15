@@ -11,13 +11,11 @@ import json
 import aiohttp
 import aiofiles
 import sys
-import subprocess
-import platform
 import urllib.request
 from pathlib import Path
-from functools import lru_cache
-from typing import Optional, Tuple, List
+from typing import Optional, List
 import re
+from tools import text_extractor
 
 # Загрузка переменных окружения из файла .env
 try:
@@ -246,314 +244,6 @@ def trim_context_if_needed(messages: list) -> list:
     
     return result
 
-@lru_cache(maxsize=1)
-def check_tesseract_installation() -> Tuple[bool, str]:
-    """Проверяет установку Tesseract OCR с кэшированием"""
-    global _tesseract_cache
-    
-    if _tesseract_cache is not None:
-        return _tesseract_cache
-    
-    try:
-        if not TESSERACT_AVAILABLE:
-            _tesseract_cache = (False, "Модуль pytesseract не установлен")
-            return _tesseract_cache
-        
-        # Читаем сохраненный путь
-        config_file = CONFIG_DIR / 'tesseract_path.txt'
-        possible_paths = []
-        
-        if config_file.exists():
-            try:
-                saved_path = config_file.read_text().strip()
-                if saved_path and Path(saved_path).exists():
-                    possible_paths.append(saved_path)
-            except:
-                pass
-        
-        # Стандартные пути
-        standard_paths = [
-            r"C:\Users\User-01\AppData\Local\Programs\Tesseract-OCR\tesseract.exe",
-            r"C:\Program Files\PDF24\tesseract\tesseract.exe",
-            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-            r"C:\Tesseract-OCR\tesseract.exe",
-            r"D:\Program Files\Tesseract-OCR\tesseract.exe",
-            r"D:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-            "tesseract"
-        ]
-        possible_paths.extend(standard_paths)
-        
-        # Проверяем пути
-        for path in possible_paths:
-            try:
-                pytesseract.pytesseract.tesseract_cmd = path
-                version = pytesseract.get_tesseract_version()
-                logger.info(f"✅ Tesseract найден: {path} (версия {version})")
-                _tesseract_cache = (True, f"Tesseract найден: {version}")
-                return _tesseract_cache
-            except:
-                continue
-        
-        # Поиск через where/which
-        try:
-            result = subprocess.run(['where', 'tesseract'], capture_output=True, text=True, shell=True)
-            if result.returncode == 0 and result.stdout.strip():
-                tesseract_path = result.stdout.strip().split('\n')[0]
-                pytesseract.pytesseract.tesseract_cmd = tesseract_path
-                version = pytesseract.get_tesseract_version()
-                logger.info(f"✅ Tesseract найден через поиск: {tesseract_path} (версия {version})")
-                _tesseract_cache = (True, f"Tesseract найден: {version}")
-                return _tesseract_cache
-        except:
-            pass
-        
-        _tesseract_cache = (False, "Tesseract не найден в системе")
-        return _tesseract_cache
-    except Exception as e:
-        _tesseract_cache = (False, f"Ошибка проверки Tesseract: {e}")
-        return _tesseract_cache
-
-def setup_tesseract_auto():
-    """Автоматическая настройка Tesseract"""
-    logger.info("🔍 Проверка Tesseract OCR...")
-    
-    # Проверяем установку
-    is_installed, message = check_tesseract_installation()
-    
-    if is_installed:
-        logger.info(f"✅ {message}")
-        return True
-    
-    logger.warning(f"⚠️ {message}")
-    
-    # Если Windows и Tesseract не найден
-    if platform.system() == "Windows":
-        logger.info("💡 Попытка настройки Tesseract для Windows...")
-        
-        # Проверяем, есть ли в папке проекта
-        local_tesseract = Path("tesseract/tesseract.exe")
-        if local_tesseract.exists():
-            try:
-                pytesseract.pytesseract.tesseract_cmd = str(local_tesseract)
-                version = pytesseract.get_tesseract_version()
-                logger.info(f"✅ Используется локальный Tesseract: {version}")
-                return True
-            except:
-                pass
-        
-        # Предлагаем скачать
-        logger.info("📥 Для полной функциональности OCR рекомендуется установить Tesseract")
-        logger.info("🔗 Инструкции по установке:")
-        logger.info("   1. Скачайте с: https://github.com/UB-Mannheim/tesseract/wiki")
-        logger.info("   2. Установите в стандартную папку")
-        logger.info("   3. Перезапустите бота")
-        
-        return False
-    else:
-        logger.info("💡 Для установки Tesseract на Linux/macOS:")
-        logger.info("   Linux: sudo apt-get install tesseract-ocr")
-        logger.info("   macOS: brew install tesseract")
-        return False
-
-async def install_missing_packages() -> bool:
-    """Устанавливает отсутствующие пакеты асинхронно"""
-    missing_packages = []
-    
-    if not TESSERACT_AVAILABLE:
-        missing_packages.extend(["Pillow", "pytesseract"])
-    if not PDF_AVAILABLE:
-        missing_packages.append("PyPDF2")
-    if not DOCX_AVAILABLE:
-        missing_packages.append("python-docx")
-    
-    if missing_packages:
-        logger.info(f"📦 Установка отсутствующих пакетов: {', '.join(missing_packages)}")
-        try:
-            # Асинхронная установка пакетов
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "pip", "install", *missing_packages,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await process.communicate()
-            
-            if process.returncode == 0:
-                logger.info("✅ Пакеты установлены успешно")
-                logger.info("🔄 Перезапустите бота для применения изменений")
-                return True
-            else:
-                logger.error(f"❌ Ошибка установки пакетов: {stderr.decode()}")
-                return False
-        except Exception as e:
-            logger.error(f"❌ Ошибка установки пакетов: {e}")
-            return False
-    
-    return True
-
-async def extract_text_from_image(image_path: str) -> str:
-    """Извлекает текст из изображения с помощью OCR с оптимизацией"""
-    if not TESSERACT_AVAILABLE:
-        return ("❌ Модули PIL/pytesseract не установлены.\n"
-                "Установите командой: pip install Pillow pytesseract")
-    
-    # Проверяем Tesseract один раз
-    tesseract_ok, message = check_tesseract_installation()
-    if not tesseract_ok:
-        return (f"🖼️ Изображение получено, но OCR недоступен.\n\n"
-                f"❌ {message}\n\n"
-                f"💡 Для распознавания текста на изображениях установите Tesseract:\n\n"
-                f"🪟 Windows: Запустите файл УСТАНОВКА.bat\n"
-                f"🐧 Linux: sudo apt-get install tesseract-ocr tesseract-ocr-rus\n"
-                f"🍎 macOS: brew install tesseract\n\n"
-                f"📱 Или опишите изображение текстом, и я помогу с анализом!")
-    
-    try:
-        # Открываем изображение
-        with Image.open(image_path) as image:
-            # Оптимизация изображения для OCR
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            
-            # Пробуем разные языковые настройки в порядке приоритета
-            languages = ['rus+eng', 'eng', None]
-            
-            for lang in languages:
-                try:
-                    text = await asyncio.get_event_loop().run_in_executor(
-                        None, 
-                        lambda: pytesseract.image_to_string(image, lang=lang) if lang else pytesseract.image_to_string(image)
-                    )
-                    
-                    if text.strip():
-                        lang_info = f"({lang})" if lang else "(default)"
-                        logger.info(f"✅ OCR успешно выполнен {lang_info}")
-                        return text.strip()
-                except Exception as e:
-                    logger.debug(f"OCR попытка с языком {lang} неудачна: {e}")
-                    continue
-            
-            return "❓ Текст на изображении не найден или не распознан"
-            
-    except Exception as e:
-        logger.error(f"Ошибка обработки изображения: {e}")
-        return f"❌ Ошибка при обработке изображения: {e}"
-
-async def extract_text_from_pdf(pdf_path: str) -> str:
-    """Извлекает текст из PDF файла асинхронно с ограничениями"""
-    if not PDF_AVAILABLE:
-        return "❌ Модуль PyPDF2 не установлен. Установите командой: pip install PyPDF2"
-    
-    try:
-        # Проверяем кэш
-        cache_key = f"pdf_{Path(pdf_path).stat().st_mtime}_{Path(pdf_path).stat().st_size}"
-        if cache_key in _file_cache:
-            logger.debug("📋 Использован кэш для PDF")
-            return _file_cache[cache_key]
-        
-        # Выполняем чтение PDF в отдельном потоке
-        def read_pdf():
-            reader = PdfReader(pdf_path)
-            total_pages = len(reader.pages)
-            
-            # Ограничиваем количество страниц
-            max_pages = min(total_pages, MAX_PDF_PAGES)
-            if total_pages > MAX_PDF_PAGES:
-                logger.warning(f"⚠️ PDF содержит {total_pages} страниц, обрабатываем первые {MAX_PDF_PAGES}")
-            
-            pages_text = []
-            for page_num in range(max_pages):
-                try:
-                    page = reader.pages[page_num]
-                    page_text = page.extract_text()
-                    if page_text.strip():
-                        # Ограничиваем размер текста страницы
-                        if len(page_text) > MAX_TEXT_LENGTH:
-                            page_text = page_text[:MAX_TEXT_LENGTH] + "... [обрезано]"
-                        pages_text.append(f"--- Страница {page_num + 1} ---\n{page_text}")
-                except Exception as page_error:
-                    logger.warning(f"Ошибка при извлечении текста со страницы {page_num + 1}: {page_error}")
-                    pages_text.append(f"--- Страница {page_num + 1} ---\n[Ошибка извлечения текста]")
-            
-            result = "\n\n".join(pages_text) if pages_text else "Текст не найден в PDF"
-            
-            # Добавляем информацию о количестве страниц
-            page_info = f"📄 PDF содержит {total_pages} страниц"
-            if total_pages > MAX_PDF_PAGES:
-                page_info += f" (обработано первых {MAX_PDF_PAGES})"
-            
-            result = f"{page_info}\n\n{result}"
-            
-            # Общее ограничение размера результата
-            if len(result) > MAX_TEXT_LENGTH * 3:
-                result = result[:MAX_TEXT_LENGTH * 3] + "\n\n... [файл обрезан для экономии памяти]"
-            
-            return result
-        
-        text = await asyncio.get_event_loop().run_in_executor(None, read_pdf)
-        
-        # Сохраняем в кэш
-        _file_cache[cache_key] = text
-        
-        # Ограничиваем размер кэша
-        if len(_file_cache) > 50:
-            # Удаляем старые записи
-            oldest_key = min(_file_cache.keys())
-            del _file_cache[oldest_key]
-        
-        return text
-        
-    except Exception as e:
-        logger.error(f"Ошибка извлечения текста из PDF: {e}")
-        return f"Ошибка при извлечении текста из PDF: {e}"
-
-async def extract_text_from_docx(docx_path: str) -> str:
-    """Извлекает текст из DOCX файла асинхронно"""
-    if not DOCX_AVAILABLE:
-        return "❌ Модуль python-docx не установлен. Установите командой: pip install python-docx"
-    
-    try:
-        # Выполняем чтение DOCX в отдельном потоке
-        def read_docx():
-            doc = Document(docx_path)
-            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-            text = "\n".join(paragraphs) if paragraphs else "Текст не найден в DOCX"
-            
-            # Добавляем информацию о документе
-            total_paragraphs = len(paragraphs)
-            doc_info = f"📝 DOCX содержит {total_paragraphs} абзацев\n\n"
-            
-            return doc_info + text
-        
-        text = await asyncio.get_event_loop().run_in_executor(None, read_docx)
-        return text
-        
-    except Exception as e:
-        logger.error(f"Ошибка извлечения текста из DOCX: {e}")
-        return f"Ошибка при извлечении текста из DOCX: {e}"
-
-async def extract_text_from_txt(txt_path: str) -> str:
-    """Извлекает текст из TXT файла с оптимизированным определением кодировки"""
-    encodings = ['utf-8', 'cp1251', 'windows-1251', 'latin-1', 'ascii']
-    
-    for encoding in encodings:
-        try:
-            async with aiofiles.open(txt_path, 'r', encoding=encoding) as f:
-                text = await f.read()
-            if text.strip():
-                # Добавляем информацию о файле
-                lines = text.strip().split('\n')
-                file_info = f"📄 TXT файл содержит {len(lines)} строк\n\n"
-                return file_info + text.strip()
-            else:
-                return "Файл пуст"
-        except (UnicodeDecodeError, UnicodeError):
-            continue
-        except Exception as e:
-            logger.error(f"Ошибка чтения файла с кодировкой {encoding}: {e}")
-            continue
-    
-    return "Не удалось прочитать файл (неподдерживаемая кодировка)"
 
 async def download_file(file_id: str, local_path: str) -> bool:
     """Скачивает файл по file_id и сохраняет по local_path с оптимизацией"""
@@ -822,7 +512,7 @@ async def send_welcome(message: types.Message):
         }
     
     # Проверяем статус OCR
-    tesseract_ok, tesseract_msg = check_tesseract_installation()
+    tesseract_ok, tesseract_msg = text_extractor.check_tesseract_installation()
     
     welcome_text = "🤖 Привет! Я умный бот с поддержкой ИИ!\n\n"
     welcome_text += "📋 Мои возможности:\n"
@@ -878,7 +568,7 @@ async def handle_model_selection(message: types.Message):
 @dp.message(lambda message: message.text == "📊 Статус")
 async def handle_status(message: types.Message):
     """Обработчик кнопки статуса"""
-    tesseract_ok, tesseract_msg = check_tesseract_installation()
+    tesseract_ok, tesseract_msg = text_extractor.check_tesseract_installation()
     
     status_text = "📊 **Статус системы**\n\n"
     status_text += f"✅ Обработка текста: Доступна\n"
@@ -1086,15 +776,15 @@ async def handle_file(message: types.Message):
                 await bot.edit_message_text("🔄 Fallback к Tesseract OCR...", 
                                            chat_id=processing_message.chat.id, 
                                            message_id=processing_message.message_id)
-                tesseract_result = await extract_text_from_image(local_file_str)
+                tesseract_result = await text_extractor.extract_text_from_image(local_file_str)
                 if tesseract_result and "❌" not in tesseract_result:
                     file_content = f"🔍 Tesseract OCR:\n\n{tesseract_result}"
         elif file_extension == ".pdf":
-            file_content = await extract_text_from_pdf(local_file_str)
+            file_content = await text_extractor.extract_text_from_pdf(local_file_str)
         elif file_extension == ".docx":
-            file_content = await extract_text_from_docx(local_file_str)
+            file_content = await text_extractor.extract_text_from_docx(local_file_str)
         elif file_extension == ".txt":
-            file_content = await extract_text_from_txt(local_file_str)
+            file_content = await text_extractor.extract_text_from_txt(local_file_str)
         elif file_type == "document":
             # Для документов без поддерживаемого расширения
             file_size_mb = file_info.file_size / (1024 * 1024) if hasattr(file_info, 'file_size') and file_info.file_size else 0
@@ -1226,12 +916,12 @@ async def startup_checks() -> bool:
     
     # Проверяем и устанавливаем отсутствующие пакеты
     logger.info("📦 Проверка Python пакетов...")
-    if not await install_missing_packages():
+    if not await text_extractor.install_missing_packages():
         logger.error("❌ Не удалось установить необходимые пакеты")
         return False
     
     # Настраиваем Tesseract
-    tesseract_ok = setup_tesseract_auto()
+    tesseract_ok = text_extractor.setup_tesseract_auto()
     
     # Проверяем токены
     logger.info("🔑 Проверка API токенов...")
